@@ -1,4 +1,6 @@
-import { friends, weapons, KO_BONUS } from './config.ts';
+import { friends, weapons, phrases, HP, KO_BONUS } from './config.ts';
+
+const maxDmg = Math.max(...weapons.map(w => w.dmg));
 
 export type User = { name: string; c: number; w: number; hits: number };
 export type Database = {
@@ -17,9 +19,19 @@ export function playerData(db: Database, userId: string | number): string {
   return JSON.stringify({ c: u?.c ?? 0, w: (u?.w ?? 1) | 1 });
 }
 
+export function phrasesData(f: number): string {
+  const list = [...(friends[f]?.phrases ?? phrases)];
+  let data = JSON.stringify(list);
+  while (Buffer.byteLength(data) > 1024) {
+    list.pop();
+    data = JSON.stringify(list);
+  }
+  return data;
+}
+
 export function applyQuery(db: Database, userId: string | number, name: string, data: unknown): string | undefined {
   if (typeof data !== 'string' || Buffer.byteLength(data) > 64) return playerData(db, userId);
-  if (/^f:[0-5]$/.test(data)) return undefined;
+  if (/^[fp]:/.test(data)) return undefined;
   const match = /^(h|b):(\d+):(\d+):(\d+)(?::(\d+))?$/.exec(data);
   if (!match) return playerData(db, userId);
   const buy = match[1] === 'b';
@@ -27,7 +39,7 @@ export function applyQuery(db: Database, userId: string | number, name: string, 
   const values = match.slice(2).filter(v => v !== undefined).map(Number);
   const [w, f, hits, coins] = buy ? values : [0, ...values];
   if (!values.every(Number.isSafeInteger) || f >= friends.length || w >= weapons.length ||
-      hits > 300 || coins > hits * 5 + KO_BONUS * Math.ceil(hits / 20)) return playerData(db, userId);
+      hits > 300 || coins > hits * maxDmg + KO_BONUS * Math.ceil(hits * maxDmg / HP)) return playerData(db, userId);
   const u = db.users[userId] ??= { name: '', c: 0, w: 1, hits: 0 };
   u.name = Array.from(name.replace(/\0/g, '')).slice(0, 12).join('');
   u.w |= 1;

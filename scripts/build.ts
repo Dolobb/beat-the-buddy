@@ -1,9 +1,10 @@
 import { readFileSync, writeFileSync, mkdirSync } from 'node:fs';
 import { minify } from 'terser';
-import { friends, weapons, phrases, HP, KO_BONUS } from '../config.ts';
+import { friends, weapons, HP, KO_BONUS } from '../config.ts';
+import { phrasesData } from '../state.ts';
 
 const root = new URL('../', import.meta.url);
-const config = { f: friends.map(f => [f.name, f.color]), w: weapons.map(w => [w.icon, w.price, w.dmg]), p: phrases, hp: HP, ko: KO_BONUS };
+const config = { f: friends.map(f => [f.name, f.color]), w: weapons.map(w => [w.icon, w.price, w.dmg, w.radius, w.force, w.mode, w.auto]), hp: HP, ko: KO_BONUS };
 let html = readFileSync(new URL('widget/widget.html', root), 'utf8').replace('__CFG__', JSON.stringify(config).replace(/</g, '\\u003c'));
 const script = /<script>([\s\S]*?)<\/script>/.exec(html)!;
 const result = await minify(script[1], { toplevel: true, compress: { passes: 3, unsafe: true }, mangle: true });
@@ -19,14 +20,19 @@ body{background:#dce4eb;padding:24px!important}#bubble{width:360px;background:va
 @media(prefers-color-scheme:dark){:root{--tg-theme-bg-color:#212121;--tg-theme-text-color:#fff;--tg-theme-hint-color:#aaa;--tg-theme-button-color:#8774e1;--tg-theme-secondary-bg-color:#181818}}
 </style><script>
 const prices=${JSON.stringify(weapons.map(w => w.price))};
+const speech=${JSON.stringify(friends.map((_, i) => JSON.parse(phrasesData(i)))).replace(/</g, '\\u003c')};
 let coins=0,mask=1;
 window.TelegramWidget={isActive:true,chatData:'{"c":0,"w":1}',publicData:'{"r":1,"v":[148,63,82,40,91,27],"t":[["Макс",232],["Аня",188],["Саша",31]]}',
 onEvent(){},offEvent(){},ready(){},watchPublicData(){},unwatchPublicData(){},HapticFeedback:{impactOccurred(){}},
 request:async data=>{
-const a=data.split(':'),kind=a.shift();if(kind==='f')return {result:null};
-const w=kind==='b'?Number(a.shift()):0,[f,h,c]=a.map(Number);
-if(f>=0&&f<6&&h>=0&&h<=300&&c>=0&&c<=h*5+${KO_BONUS}*Math.ceil(h/20)){
-coins+=c;if(kind==='b'&&w>=0&&w<4&&!(mask&1<<w)&&coins>=prices[w]){coins-=prices[w];mask|=1<<w;}}
+if(/^[fp]:/.test(data)){
+const m=/^([fp]):(\\d+)$/.exec(data),i=Number(m?.[2]);
+return {result:m&&i<speech.length&&m[1]==='p'?JSON.stringify(speech[i]):null};}
+const m=/^(h|b):(\\d+):(\\d+):(\\d+)(?::(\\d+))?$/.exec(data);
+if(m&&(m[1]==='b')===(m[5]!==undefined)){
+const a=m.slice(2).filter(v=>v!==undefined).map(Number),[w,f,h,c]=m[1]==='b'?a:[0,...a];
+if(a.every(Number.isSafeInteger)&&f<speech.length&&w<prices.length&&h<=300&&c<=h*${Math.max(...weapons.map(w => w.dmg))}+${KO_BONUS}*Math.ceil(h*${Math.max(...weapons.map(w => w.dmg))}/${HP})){
+coins+=c;if(m[1]==='b'&&!(mask&1<<w)&&coins>=prices[w]){coins-=prices[w];mask|=1<<w;}}}
 return {result:JSON.stringify({c:coins,w:mask})};}};
 </script><div id="bubble">${html}</div>`;
 writeFileSync(new URL('dist/preview.html', root), preview);

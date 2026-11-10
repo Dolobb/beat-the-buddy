@@ -4,3 +4,4 @@ data.json
 dist
 out
 .venv
+.DS_Store

@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { setTimeout as pause } from 'node:timers/promises';
 import { friends } from './config.ts';
-import { applyQuery, createDB, playerData, publicData, topText } from './state.ts';
+import { applyQuery, createDB, playerData, publicData, topText, phrasesData } from './state.ts';
 import type { Database } from './state.ts';
 
 const token = process.env.BOT_TOKEN;
@@ -11,7 +11,7 @@ let html: string;
 try { html = readFileSync(new URL('./dist/widget.html', import.meta.url), 'utf8'); }
 catch { throw new Error('Нет dist/widget.html: сначала npm run build'); }
 const htmlHash = createHash('sha1').update(html).digest('hex');
-const HEIGHT = 440; // Та же фиксированная высота, что в widget/widget.html.
+const HEIGHT = 490; // Та же фиксированная высота, что в widget/widget.html.
 const dbPath = new URL('./data.json', import.meta.url);
 const tmpPath = new URL('./data.json.tmp', import.meta.url);
 let db: Database;
@@ -80,7 +80,11 @@ async function handle(update) {
   if (query) {
     let data: string | undefined;
     try {
-      if (/^f:[0-5]$/.test(query.data)) data = face(Number(query.data.slice(2)));
+      if (/^[fp]:/.test(query.data)) {
+        const match = /^([fp]):(\d+)$/.exec(query.data), i = Number(match?.[2]);
+        if (Number.isSafeInteger(i) && i < friends.length)
+          data = match![1] === 'f' ? face(i) : phrasesData(i);
+      }
       else {
         const before = publicData(db);
         data = applyQuery(db, query.from.id, query.from.first_name, query.data);
