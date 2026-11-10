@@ -1,10 +1,10 @@
 export const friends = [
-  { id: 'f1', name: 'Макс', color: '#e74c3c' },
-  { id: 'f2', name: 'Саша', color: '#3498db' },
-  { id: 'f3', name: 'Дима', color: '#27ae60' },
-  { id: 'f4', name: 'Аня', color: '#9b59b6' },
-  { id: 'f5', name: 'Катя', color: '#e67e22' },
-  { id: 'f6', name: 'Ваня', color: '#16a085' },
+  { id: 'f1', name: 'Пешка', color: '#e74c3c' },
+  { id: 'f2', name: 'Бло', color: '#3498db' },
+  { id: 'f3', name: 'Боб', color: '#27ae60' },
+  { id: 'f4', name: 'Джстл', color: '#9b59b6' },
+  { id: 'f5', name: 'Мар', color: '#e67e22' },
+  { id: 'f6', name: 'Дрон', color: '#16a085' },
 ];
 
 export const weapons = [
