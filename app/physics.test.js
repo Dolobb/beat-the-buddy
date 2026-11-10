@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 import { readFileSync } from 'node:fs';
+import { appWeapons } from '../config.ts';
 const require = createRequire(import.meta.url);
 const VendorModule = require('node:module');
 const vendor = new VendorModule('matter.cjs');
@@ -148,5 +149,220 @@ test('contact rockets and falling heavy objects each damage once', () => {
     assert.equal(hits.length, 1, weapon.kind);
     assert.ok(hits[0][0] > 0 && hits[0][0] <= weapon.dmg);
     w.clear(); p.destroy();
+  }
+});
+
+const roomBounds = { x: 0, y: 0, width: 390, height: 716 };
+const frameTime = 1000 / 60;
+const distance = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+const maxSpeed = p => Math.max(...p.parts.map(b => b.speed));
+
+function weaponSimulation(t, name, { burst = false, besideTorso = false } = {}) {
+  let frame = 0, lastDamageFrame = null, wallReached = false;
+  const hits = [];
+  const p = createPhysics(roomBounds, () => {});
+  const w = createWeapons(p, (...args) => { hits.push(args); lastDamageFrame = frame; }, effects(), { play() {} });
+  t.after(() => { w.clear(); p.destroy(); });
+  step(p, 180);
+  const torso = p.parts[1], head = p.parts[0];
+  const start = { ...torso.position }, headStart = { ...head.position };
+  const weapon = appWeapons.find(w => w.name === name);
+  assert.ok(weapon, name);
+  M.Events.on(p.engine, 'collisionStart', ({ pairs }) => {
+    for (const pair of pairs) {
+      const wall = [pair.bodyA, pair.bodyB].find(b => b.label === 'wall');
+      if (wall && (wall.position.x < 0 || wall.position.x > roomBounds.width)
+        && [pair.bodyA, pair.bodyB].some(b => b.plugin.part)) wallReached = true;
+    }
+  });
+  const point = { ...start };
+  if (besideTorso) point.x -= 40;
+  w.down(point, weapon);
+  if (!burst) w.up();
+  if (besideTorso) {
+    // Контролируем место взрыва, сохраняя настоящий fuse/контакт и импульсы createWeapons.
+    const projectile = M.Composite.allBodies(p.world).find(b => b.label === 'projectile');
+    assert.ok(projectile);
+    M.Body.setPosition(projectile, point);
+    M.Body.setVelocity(projectile, { x: 0, y: 0 });
+    if (weapon.fuse) w.update(weapon.fuse);
+    else { p.update(frameTime); w.update(frameTime); }
+    assert.equal(hits.length, 1, `${name}: detonation`);
+    assert.ok(distance(hits[0][1], point) < 1, `${name}: blast must be 40 px beside torso`);
+  }
+  let torsoX = 0, torsoDistance = 0, headDistance = 0, headDown = 0, torsoDown = 0, first30X = 0;
+  const frames = new Map();
+  for (frame = 1; frame <= 420; frame++) {
+    p.update(frameTime); w.update(frameTime);
+    if (burst && frame === 60) w.up();
+    const dx = Math.abs(torso.position.x - start.x);
+    torsoX = Math.max(torsoX, dx);
+    torsoDistance = Math.max(torsoDistance, distance(torso.position, start));
+    headDistance = Math.max(headDistance, distance(head.position, headStart));
+    headDown = Math.max(headDown, head.position.y - headStart.y);
+    torsoDown = Math.max(torsoDown, torso.position.y - start.y);
+    if (frame <= 30) first30X = Math.max(first30X, dx);
+    frames.set(frame, { torsoX: dx, headHome: distance(head.position, p.home), speed: maxSpeed(p),
+      angularSpeed: Math.max(...p.parts.map(b => Math.abs(b.angularVelocity))) });
+    assert.ok(p.parts.every(b => Number.isFinite(b.position.x) && Number.isFinite(b.position.y) && Number.isFinite(b.angle)));
+  }
+  assert.ok(hits.length > 0, `${name}: actual weapon must hit`);
+  const recovered = frames.get(lastDamageFrame + 150);
+  assert.ok(recovered.headHome < 25, `${name}: home at 2.5 s: ${recovered.headHome}`);
+  assert.ok(recovered.speed < .1, `${name}: speed at 2.5 s: ${recovered.speed}`);
+  for (let i = lastDamageFrame + 150; i <= 420; i++) {
+    assert.ok(frames.get(i).speed < .1, `${name}: must stay still after recovery, frame ${i}`);
+    assert.ok(frames.get(i).angularSpeed < .002, `${name}: must stop spinning, frame ${i}`);
+  }
+  t.diagnostic(JSON.stringify({ name, torsoX, torsoDistance, headDistance, headDown, torsoDown, wallReached,
+    recoverySpeed: recovered.speed }));
+  return { torsoX, torsoDistance, headDistance, headDown, torsoDown, first30X, frames, wallReached, hits };
+}
+
+test('acceptance: 600 idle frames stay still throughout the final 300', t => {
+  const p = createPhysics(roomBounds, () => {});
+  t.after(() => p.destroy());
+  let speed = 0, angularSpeed = 0;
+  for (let i = 0; i < 600; i++) {
+    step(p, 1);
+    if (i < 300) continue;
+    speed = Math.max(speed, maxSpeed(p));
+    angularSpeed = Math.max(angularSpeed, ...p.parts.map(b => Math.abs(b.angularVelocity)));
+  }
+  assert.ok(speed < .1, `idle speed: ${speed}`);
+  assert.ok(angularSpeed < .002, `idle angular speed: ${angularSpeed}`);
+  t.diagnostic(JSON.stringify({ speed, angularSpeed }));
+});
+
+test('acceptance: configured fist moves the chest >=25 px in 30 frames and returns by 180', t => {
+  const result = weaponSimulation(t, 'Кулак');
+  assert.ok(result.first30X >= 25, `${result.first30X} px`);
+  assert.ok(result.frames.get(180).torsoX < 12);
+  assert.ok(result.frames.get(180).speed < .3);
+  t.diagnostic(JSON.stringify({ fistAt180: result.frames.get(180) }));
+});
+
+test('acceptance: configured bat throws the torso >=90 px to a wall', t => {
+  const result = weaponSimulation(t, 'Бита');
+  assert.ok(result.torsoX >= 90, `${result.torsoX} px`);
+  assert.ok(result.wallReached);
+});
+
+test('acceptance: configured pistol shot moves the torso >=8 px', t => {
+  const result = weaponSimulation(t, 'Пистолет');
+  assert.equal(result.hits.length, 1);
+  assert.ok(result.torsoX >= 8, `${result.torsoX} px`);
+});
+
+test('gun ray reaches beyond the aim point and keeps its side while aiming across the centre', t => {
+  const p = createPhysics(roomBounds, () => {}), hits = [], origins = [];
+  const fx = { ...effects(), line(x) { origins.push(x); } };
+  const w = createWeapons(p, (...args) => hits.push(args), fx, { play() {} });
+  t.after(() => { w.clear(); p.destroy(); });
+  step(p, 180);
+  const aim = { x: roomBounds.width / 2 + 1, y: p.parts[1].position.y };
+  for (const part of p.parts) M.Body.translate(part, { x: -90, y: 0 });
+  const weapon = appWeapons.find(w => w.name === 'Пистолет');
+  w.down(aim, weapon);
+  assert.equal(hits.length, 1);
+  assert.ok(hits[0][1].x < aim.x - 8);
+  w.move({ x: aim.x - 90, y: aim.y }); w.update(weapon.rate); w.up();
+  assert.equal(hits.length, 2);
+  assert.deepEqual(origins, [roomBounds.width - 12, roomBounds.width - 12]);
+});
+
+for (const name of ['Пулемёт', 'Лазер']) {
+  test(`acceptance: ${name} burst for one second drives the body >=60 px to a wall`, t => {
+    const result = weaponSimulation(t, name, { burst: true });
+    assert.ok(result.torsoX >= 60, `${result.torsoX} px`);
+    assert.ok(result.wallReached);
+    assert.ok(result.hits.length >= 10);
+  });
+}
+
+test('acceptance: grenade and rocket free the head, rocket throws at least as far; recover by 240', t => {
+  const grenade = weaponSimulation(t, 'Граната', { besideTorso: true });
+  const rocket = weaponSimulation(t, 'Базука', { besideTorso: true });
+  assert.ok(grenade.torsoDistance >= 150 || grenade.wallReached);
+  assert.ok(grenade.headDistance >= 100, `${grenade.headDistance} px`);
+  assert.ok(rocket.torsoDistance >= grenade.torsoDistance, `${rocket.torsoDistance} < ${grenade.torsoDistance}`);
+  assert.ok(grenade.frames.get(240).headHome < 25);
+  assert.ok(grenade.frames.get(240).speed < .5);
+  t.diagnostic(JSON.stringify({ grenadeAt240: grenade.frames.get(240) }));
+});
+
+test('acceptance: brick reaches a wall, slipper nudges and falling anvil crushes down', t => {
+  assert.ok(weaponSimulation(t, 'Тапок').torsoX > 8);
+  const brick = weaponSimulation(t, 'Кирпич');
+  assert.ok(brick.torsoX >= 90 && brick.wallReached);
+  const anvil = weaponSimulation(t, 'Наковальня');
+  assert.ok(anvil.headDown >= 80 && anvil.torsoDown >= 40);
+});
+
+test('acceptance: nuclear blast has the greatest throw', t => {
+  const rocket = weaponSimulation(t, 'Базука', { besideTorso: true });
+  const nuclear = weaponSimulation(t, 'Ядерка', { besideTorso: true });
+  assert.ok(nuclear.torsoDistance >= rocket.torsoDistance);
+});
+
+test('configured grenade and rocket also throw the head when launched normally', t => {
+  for (const name of ['Граната', 'Базука']) {
+    const result = weaponSimulation(t, name);
+    assert.ok(result.headDistance >= 100, `${name}: ${result.headDistance} px`);
+    assert.ok(result.wallReached);
+  }
+});
+
+test('acceptance: KO still drops the head >=80 px in 120 frames in the full room', t => {
+  const p = createPhysics(roomBounds, () => {});
+  t.after(() => p.destroy());
+  step(p, 180);
+  const y = p.parts[0].position.y;
+  p.setKO(true); step(p, 120);
+  const headDrop = p.parts[0].position.y - y;
+  assert.ok(headDrop >= 80);
+  t.diagnostic(JSON.stringify({ headDrop }));
+});
+
+test('configured hand still drags and throws without dealing damage', t => {
+  const p = createPhysics(roomBounds, () => {}), hits = [];
+  const w = createWeapons(p, (...args) => hits.push(args), effects(), { play() {} });
+  t.after(() => { w.clear(); p.destroy(); });
+  step(p, 180);
+  const head = p.parts[0], start = { ...head.position };
+  w.down(start, appWeapons.find(w => w.kind === 'hand'));
+  w.move({ x: start.x + 60, y: start.y - 50 }); step(p, 15);
+  assert.ok(head.position.x > start.x + 20);
+  w.move({ x: start.x + 90, y: start.y - 50 }); step(p, 1);
+  w.up();
+  const thrownX = head.position.x;
+  assert.ok(head.speed > 0);
+  step(p, 5);
+  assert.ok(head.position.x > thrownX + 5);
+  assert.equal(hits.length, 0);
+});
+
+test('configured hand tap nudges the body and deals one damage', t => {
+  const result = weaponSimulation(t, 'Рука');
+  assert.equal(result.hits.length, 1);
+  assert.equal(result.hits[0][0], 1);
+  assert.ok(result.torsoDistance > 0);
+});
+
+test('weapon impulses survive frames smaller than the fixed physics step', t => {
+  const scenes = [1, 2].map(() => {
+    const p = createPhysics(roomBounds, () => {});
+    const w = createWeapons(p, () => {}, effects(), { play() {} });
+    t.after(() => { w.clear(); p.destroy(); });
+    step(p, 180);
+    w.down({ ...p.parts[1].position }, appWeapons.find(w => w.name === 'Кулак')); w.up();
+    return p;
+  });
+  for (let i = 0; i < 240; i++) {
+    scenes[0].update(frameTime);
+    scenes[1].update(frameTime / 2); scenes[1].update(frameTime / 2);
+  }
+  for (let i = 0; i < scenes[0].parts.length; i++) {
+    assert.ok(distance(scenes[0].parts[i].position, scenes[1].parts[i].position) < 1e-8);
   }
 });

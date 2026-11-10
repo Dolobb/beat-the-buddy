@@ -3,15 +3,18 @@ export function createPhysics(initialBounds, onHit) {
   const engine = Engine.create({ positionIterations: 8, constraintIterations: 5 });
   const world = engine.world;
   world.gravity.y = 1;
-  let support, held = null, ko = false, pointer = null, pointerVelocity = { x: 0, y: 0 }, acc = 0, poses = [], squash = new Map();
+  let support, held = null, ko = false, pointer = null, pointerVelocity = { x: 0, y: 0 }, acc = 0, stagger = 0, poses = [], squash = new Map();
   const lastHit = new Map();
-  const api = { engine, world, parts: [], bounds: { ...initialBounds }, reset, setKO, update, nearest, grab, move, release, destroy, squash, punch };
+  const pendingImpulses = [];
+  let stepping = false;
+  const api = { engine, world, parts: [], bounds: { ...initialBounds }, reset, setKO, update, nearest, grab, move, release, destroy, squash, punch, impulse };
 
   function reset(nextBounds = api.bounds) {
     release(false);
     Composite.clear(world, false);
     Engine.clear(engine);
-    lastHit.clear(); ko = false; acc = 0; poses = []; squash.clear();
+    lastHit.clear(); ko = false; acc = 0; stagger = 0; poses = []; squash.clear();
+    pendingImpulses.length = 0;
     api.bounds = { ...nextBounds };
     const { x, y, width, height } = api.bounds;
     const wall = { isStatic: true, restitution: .3, friction: .65, label: 'wall' };
@@ -38,6 +41,8 @@ export function createPhysics(initialBounds, onHit) {
     const head = part('head', 0, cx, top + headSize / 2, headSize, headSize, true);
     const torso = part('torso', 0, cx, head.position.y + headSize * .37 + th / 2, tw, th);
     joint(head, torso, { x: 0, y: headSize * .35 }, { x: 0, y: -th * .5 });
+    // Корень позы — торс: его стабилизатор не должен бороться с поворотом головы.
+    poses[0] = [head, torso];
     for (const side of [-1, 1]) {
       const aw = 84 * scale, ah = 198 * scale, hw = 83 * scale, hh = 233 * scale;
       const shoulder = { x: cx + side * tw * .48, y: torso.position.y - th * .34 };
@@ -119,6 +124,7 @@ export function createPhysics(initialBounds, onHit) {
       const vx = body.velocity.x + pointerVelocity.x * .6, vy = body.velocity.y + pointerVelocity.y * .6;
       const factor = Math.min(1, 32 / Math.max(1, Math.hypot(vx, vy)));
       Body.setVelocity(body, { x: vx * factor, y: vy * factor });
+      stagger = 900;
     }
     Composite.remove(world, held); held = null; pointer = null;
     if (!ko && support) support.stiffness = .03;
@@ -132,18 +138,38 @@ export function createPhysics(initialBounds, onHit) {
     for (const [id, v] of squash) { const n = v * .82; if (n < .01) squash.delete(id); else squash.set(id, n); }
   }
   function step() {
+    stagger = Math.max(0, stagger - STEP);
+    const recovery = Math.max(0, 1 - stagger / 500);
+    support.stiffness = ko ? 0 : held ? .0015 : .03 * recovery;
+    support.damping = .25 * recovery;
     const torso = api.parts[1];
-    if (!ko && !held) Body.setAngularVelocity(torso, torso.angularVelocity * .86 - Math.sin(torso.angle) * .03);
+    if (!ko && !held) Body.setAngularVelocity(torso,
+      torso.angularVelocity * (1 - .3 * recovery) - Math.atan2(Math.sin(torso.angle), Math.cos(torso.angle)) * .12 * recovery);
     // Поза: каждая часть мягко возвращается к углу родителя. Живой — упруго, в нокауте — тряпка.
-    const k = ko ? 0 : .022, damp = ko ? .99 : .9;
+    const k = ko ? 0 : held ? .022 : .12 * recovery, damp = ko ? .99 : held ? .9 : 1 - .3 * recovery;
     for (const [child, parent] of poses) {
-      const w = child.angularVelocity * damp - Math.sin(child.angle - parent.angle) * k;
+      const angle = child.angle - parent.angle;
+      const w = child.angularVelocity * damp - Math.atan2(Math.sin(angle), Math.cos(angle)) * k;
       Body.setAngularVelocity(child, Math.max(-.55, Math.min(.55, w)));
     }
     for (const body of api.parts) {
+      body.frictionAir = !ko && !held ? .018 + .08 * recovery : .018;
       if (body.speed > 42) Body.setVelocity(body, Vector.mult(body.velocity, 42 / body.speed));
     }
+    stepping = true;
     Engine.update(engine, STEP);
+    stepping = false;
+    for (const args of pendingImpulses) impulse(...args);
+    pendingImpulses.length = 0;
+  }
+  function impulse(body, point, velocity) {
+    // collisionStart вызывается до решателя контактов, который иначе погасит новый импульс.
+    if (stepping) { pendingImpulses.push([body, { ...point }, { ...velocity }]); return; }
+    stagger = Math.max(stagger, Math.min(900, 650 + Math.hypot(velocity.x, velocity.y) * 15));
+    // Импульс скорости не зависит от массы и не теряется между фиксированными шагами.
+    Body.setVelocity(body, Vector.add(body.velocity, velocity));
+    const spin = ((point.x - body.position.x) * velocity.y - (point.y - body.position.y) * velocity.x) * body.mass / body.inertia;
+    Body.setAngularVelocity(body, Math.max(-.55, Math.min(.55, body.angularVelocity + spin)));
   }
   function punch(body, amount = .35) { squash.set(body.id, Math.min(.6, Math.max(squash.get(body.id) ?? 0, amount))); }
 

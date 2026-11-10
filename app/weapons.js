@@ -5,8 +5,8 @@ export function createWeapons(physics, onDamage, fx, sfx) {
 
   function push(body, point, force, direction) {
     const length = Math.hypot(direction.x, direction.y) || 1;
-    Body.applyForce(body, point, { x: direction.x / length * Math.min(force, .45) * body.mass * .35,
-      y: direction.y / length * Math.min(force, .45) * body.mass * .35 });
+    physics.impulse(body, point, { x: direction.x / length * force * 100,
+      y: direction.y / length * force * 100 });
   }
   function impact(body, point, damage, force, direction, sound = 'punch') {
     push(body, point, force, direction);
@@ -29,12 +29,18 @@ export function createWeapons(physics, onDamage, fx, sfx) {
     fx.swing(point.x, point.y, weapon.icon);
     const bodies = radial(point, weapon.radius ?? 60);
     if (!bodies.length) { sfx.play('slap'); return; }
-    for (const body of bodies) push(body, body.position, weapon.force, { x: body.position.x - point.x || 1, y: -.6 * (weapon.radius ?? 60) });
+    const direction = { x: point.x < physics.bounds.x + physics.bounds.width / 2 ? 1 : -1, y: -.35 };
+    for (const body of bodies) push(body, body.position, weapon.force, direction);
     const body = physics.nearest(point, weapon.radius ?? 60) ?? bodies[0];
-    impact(body, point, weapon.dmg, weapon.force * .25, { x: body.position.x - point.x || 1, y: -30 });
+    impact(body, point, weapon.dmg, weapon.force * .25, direction);
   }
   function shoot(point, weapon) {
-    const from = origin(point), dx = point.x - from.x, dy = point.y - from.y;
+    const from = origin(start), b = physics.bounds;
+    const aimX = point.x - from.x, aimY = point.y - from.y;
+    // Луч проходит сквозь точку прицеливания до стены; сторона стрельбы постоянна всю очередь.
+    const reach = Math.min(aimX ? ((aimX > 0 ? b.x + b.width : b.x) - from.x) / aimX : Infinity,
+      aimY ? ((aimY > 0 ? b.y + b.height : b.y) - from.y) / aimY : Infinity);
+    const dx = aimX * (Number.isFinite(reach) ? reach : 1), dy = aimY * (Number.isFinite(reach) ? reach : 1);
     let hit = null, best = 1;
     for (const body of physics.parts) {
       for (let i = 0; i < body.vertices.length; i++) {
@@ -92,7 +98,7 @@ export function createWeapons(physics, onDamage, fx, sfx) {
       const falloff = Math.max(0, 1 - distance / weapon.radius);
       if (!falloff) continue;
       damage = Math.max(damage, Math.round(weapon.dmg * falloff));
-      push(part, part.position, weapon.force * falloff, { x: part.position.x - point.x || 1, y: part.position.y - point.y - 25 });
+      push(part, part.position, weapon.force * Math.sqrt(falloff), { x: part.position.x - point.x || 1, y: part.position.y - point.y - Math.min(weapon.radius, 350) * .6 });
     }
     const power = Math.min(1.8, .5 + weapon.dmg / 65);
     if (damage > 0) onDamage(damage, point, power);
@@ -110,7 +116,14 @@ export function createWeapons(physics, onDamage, fx, sfx) {
         if (!weapon.fuse) explode(projectile);
       } else if (other.plugin.part) {
         const point = pair.collision.supports.find(Boolean) ?? other.position;
-        impact(other, { x: point.x, y: point.y }, weapon.dmg, weapon.force, body.velocity);
+        // Тяжёлый снаряд передаёт толчок всей связанной кукле; груз раздвигает опорные ноги.
+        for (const part of physics.parts) {
+          if (part === other) continue;
+          push(part, part.position, weapon.force * .25, weapon.kind === 'drop'
+            ? { x: (part.position.x - point.x) / 40, y: 1 } : body.velocity);
+        }
+        impact(other, { x: point.x, y: point.y }, weapon.dmg, weapon.force,
+          weapon.kind === 'drop' ? { x: .25, y: 1 } : body.velocity);
         remove(projectile);
       }
     }
