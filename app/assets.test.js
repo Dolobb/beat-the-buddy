@@ -17,7 +17,7 @@ test('all configured heads and outfits exist; PNG dimensions match manifest',()=
   for(const [name,size] of files) {
     const png=readFileSync(new URL(`./assets/${name}.png`,import.meta.url));
     assert.equal(png.subarray(1,4).toString(),'PNG',name);
-    assert.deepEqual([png.readUInt32BE(16),png.readUInt32BE(20)],size,name);
+    assert.deepEqual([png.readUInt32BE(16),png.readUInt32BE(20)],size.slice(0,2),name);
   }
 });
 

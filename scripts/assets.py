@@ -1,4 +1,4 @@
-"""Готовит картинки мини-аппа в app/assets из faces-src/ и body-src/ (маджента -> прозрачность).
+"""Готовит картинки мини-аппа в app/assets из heads-src/ и body-src/ (маджента -> прозрачность).
 Головы: <id>.png, опционально <id>-hurt.png и <id>-ko.png. Тела: листы из 5 деталей (см. body.py).
 Запуск: .venv/bin/python scripts/assets.py"""
 import json, pathlib
@@ -22,10 +22,28 @@ def save(im, name):
     im.quantize(96, method=Image.Quantize.FASTOCTREE).save(dst / name, optimize=True)
     return [im.width, im.height]
 
-for src in sorted((root / 'faces-src').glob('*.png')):
-    im = key(Image.open(src)); im = im.crop(im.getbbox())
-    im = im.resize((HEAD_W, round(im.height * HEAD_W / im.width)), Image.LANCZOS)
-    manifest['heads'][src.stem] = save(im, f'head-{src.stem}.png')
+# Три версии головы (обычная, -hurt, -ko) кладутся на общий холст: один масштаб (по обычной),
+# низ шеи по центру и на одной высоте, чтобы голова не прыгала при смене состояния.
+# В манифесте [w, h, k]: k = ширина холста / ширина обычной головы, рендер рисует шириной headW * k.
+def neck_x(im):
+    row = im.crop((0, im.height - 6, im.width, im.height)).getbbox()
+    return (row[0] + row[2]) / 2
+
+for base_src in sorted(p for p in (root / 'heads-src').glob('*.png') if '-' not in p.stem):
+    fid = base_src.stem
+    group = {}
+    for suffix in ('', '-hurt', '-ko'):
+        f = root / 'heads-src' / f'{fid}{suffix}.png'
+        if f.exists():
+            im = key(Image.open(f)); group[suffix] = im.crop(im.getbbox())
+    base_w = group[''].width; s = HEAD_W / base_w
+    half = max(max(neck_x(im), im.width - neck_x(im)) for im in group.values())
+    H = max(im.height for im in group.values())
+    for suffix, im in group.items():
+        canvas = Image.new('RGBA', (round(half * 2), H), (30, 20, 20, 0))
+        canvas.paste(im, (round(half - neck_x(im)), H - im.height))
+        canvas = canvas.resize((round(canvas.width * s), round(H * s)), Image.LANCZOS)
+        manifest['heads'][fid + suffix] = save(canvas, f'head-{fid}{suffix}.png') + [round(half * 2 / base_w, 3)]
 
 for src in sorted((root / 'body-src').glob('*.png')):
     im = key(Image.open(src)); alpha = im.getchannel('A')

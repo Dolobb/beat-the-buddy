@@ -190,8 +190,8 @@ function drawPart(body) {
   const variant=hp<=0&&manifest.heads[`${f.id}-ko`]?`${f.id}-ko`:hp<config.hp*.5&&manifest.heads[`${f.id}-hurt`]?`${f.id}-hurt`:f.id;
   const key=head?`head-${variant}`:`body-${sheet()}-${p.part}`,img=images.get(key);
   if(!img) return;
-  const w=p.w,h=head?w*manifest.heads[variant][1]/manifest.heads[variant][0]:p.h;
-  const top=head?-h+w*.48:-h/2;
+  const w=head?p.w*(manifest.heads[variant][2]||1):p.w,h=head?w*manifest.heads[variant][1]/manifest.heads[variant][0]:p.h;
+  const top=head?-h+p.w*.48:-h/2;
   ctx.save();ctx.translate(body.position.x,body.position.y);ctx.rotate(body.angle);
   if(p.side<0) ctx.scale(-1,1);
   ctx.drawImage(img,-w/2,top,w,h);
