@@ -2,7 +2,7 @@ import { readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { setTimeout as pause } from 'node:timers/promises';
 import { friends } from './config.ts';
-import { applyQuery, createDB, playerData, publicData } from './state.ts';
+import { applyQuery, createDB, playerData, publicData, topText } from './state.ts';
 import type { Database } from './state.ts';
 
 const token = process.env.BOT_TOKEN;
@@ -92,7 +92,12 @@ async function handle(update) {
     await api('answerWidgetQuery', { widget_query_id: query.id, ...(data === undefined ? {} : { data }) });
   }
   const message = update.message;
-  if (message?.from && /^\/start(?:@\w+)?(?:\s|$)/.test(message.text ?? '')) {
+  const command = /^\/(start|top)(?:@\w+)?(?:\s|$)/.exec(message?.text ?? '')?.[1];
+  if (command === 'top' || (command && message.chat.type !== 'private')) {
+    // Виджеты в продакшене шлются только в личку, в группе отвечаем текстом.
+    const hint = command === 'start' ? `Играть в личке: https://t.me/${me.username}\n\n` : '';
+    await api('sendMessage', { chat_id: message.chat.id, text: hint + topText(db) });
+  } else if (command && message.from) {
     applyQuery(db, message.from.id, message.from.first_name, 'h:0:0:0');
     scheduleSave();
     const chat_data = playerData(db, message.from.id);
@@ -117,6 +122,8 @@ for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => {
   try { save(); } catch (error) { console.error('Сохранение при выходе:', error.message); process.exitCode = 1; }
 });
 
+const me = await api('getMe', {});
+console.log(`Бот @${me.username} запущен`);
 let offset = 0;
 while (!stopping) {
   try {

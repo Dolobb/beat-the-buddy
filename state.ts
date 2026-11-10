@@ -49,3 +49,10 @@ export function publicData(db: Database): string {
       .map(u => [Array.from(u.name.replace(/\0/g, '')).slice(0, 12).join(''), u.hits]),
   });
 }
+
+export function topText(db: Database): string {
+  const victims = friends.map((f, i) => [f.name, db.victims[i]] as const).sort((a, b) => b[1] - a[1]);
+  const fighters = Object.values(db.users).filter(u => u.hits).sort((a, b) => b.hits - a.hits).slice(0, 10);
+  const lines = (rows: (readonly [string, number])[]) => rows.map(([n, v], i) => `${i + 1}. ${n}: ${v}`).join('\n');
+  return `Кто огрёб\n${lines(victims)}\n\nКто бил\n${fighters.length ? lines(fighters.map(u => [u.name, u.hits] as const)) : 'пока никто'}`;
+}

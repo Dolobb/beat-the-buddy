@@ -50,3 +50,13 @@ test('publicData: ревизия, топ-3, длинные имена и лим�
   assert.equal(Array.from(parsed.t[0][0]).length, 12);
   assert.ok(!data.includes('\0'));
 });
+
+test('topText сортирует жертв и бойцов', async () => {
+  const { topText } = await import('./state.ts');
+  const db = createDB();
+  applyQuery(db, 1, 'А', 'h:2:20:20');
+  applyQuery(db, 2, 'Б', 'h:5:30:30');
+  const text = topText(db);
+  assert.match(text, /1\. Дрон: 30\n2\. Боб: 20/);
+  assert.match(text, /1\. Б: 30\n2\. А: 20/);
+});
