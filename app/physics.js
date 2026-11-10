@@ -3,15 +3,15 @@ export function createPhysics(initialBounds, onHit) {
   const engine = Engine.create({ positionIterations: 8, constraintIterations: 5 });
   const world = engine.world;
   world.gravity.y = 1;
-  let support, held = null, ko = false, pointer = null, pointerVelocity = { x: 0, y: 0 };
+  let support, held = null, ko = false, pointer = null, pointerVelocity = { x: 0, y: 0 }, acc = 0, poses = [], squash = new Map();
   const lastHit = new Map();
-  const api = { engine, world, parts: [], bounds: { ...initialBounds }, reset, setKO, update, nearest, grab, move, release, destroy };
+  const api = { engine, world, parts: [], bounds: { ...initialBounds }, reset, setKO, update, nearest, grab, move, release, destroy, squash, punch };
 
   function reset(nextBounds = api.bounds) {
     release(false);
     Composite.clear(world, false);
     Engine.clear(engine);
-    lastHit.clear(); ko = false;
+    lastHit.clear(); ko = false; acc = 0; poses = []; squash.clear();
     api.bounds = { ...nextBounds };
     const { x, y, width, height } = api.bounds;
     const wall = { isStatic: true, restitution: .3, friction: .65, label: 'wall' };
@@ -21,17 +21,18 @@ export function createPhysics(initialBounds, onHit) {
       Bodies.rectangle(x + width / 2, y - 30, width, 60, wall),
       Bodies.rectangle(x + width / 2, y + height + 30, width, 60, wall),
     ]);
-    const scale = Math.min(height * .55 / 790, width / 600);
+    const scale = Math.min(height * .64 / 860, width / 560);
     const group = Body.nextGroup(true), parts = [];
     const cx = x + width / 2, top = y + height * .19;
     function part(name, side, px, py, w, h, circle = false) {
-      const options = { collisionFilter: { group }, friction: .55, frictionAir: .025, restitution: .28,
+      const options = { collisionFilter: { group }, friction: .55, frictionAir: .018, restitution: .22,
         density: .002, label: name, plugin: { part: name, side, w, h } };
       const body = circle ? Bodies.circle(px, py, w / 2, options) : Bodies.rectangle(px, py, w, h, { ...options, chamfer: { radius: Math.min(w, h) * .16 } });
       parts.push(body); return body;
     }
     function joint(a, b, pointA, pointB) {
-      Composite.add(world, Constraint.create({ bodyA: a, bodyB: b, pointA, pointB, length: 2, stiffness: .75, damping: .12 }));
+      Composite.add(world, Constraint.create({ bodyA: a, bodyB: b, pointA, pointB, length: 0, stiffness: .9, damping: .25 }));
+      poses.push([b, a]);
     }
     const tw = 204 * scale, th = 268 * scale, headSize = tw * 1.3;
     const head = part('head', 0, cx, top + headSize / 2, headSize, headSize, true);
@@ -51,15 +52,29 @@ export function createPhysics(initialBounds, onHit) {
       joint(torso, thigh, { x: side * tw * .25, y: th * .38 }, { x: 0, y: -thighH * .42 });
       joint(thigh, shin, { x: 0, y: thighH * .42 }, { x: 0, y: -shinH * .42 });
     }
-    support = Constraint.create({ pointA: { ...head.position }, bodyB: head, length: 0, stiffness: .035, damping: .2 });
+    // Ставим на пол: сдвигаем всё тело так, чтобы ступни касались пола, и вешаем «кукловода» за голову.
+    const lowest = Math.max(...parts.map(b => b.bounds.max.y));
+    for (const b of parts) Body.translate(b, { x: 0, y: y + height - 1 - lowest });
+    support = Constraint.create({ pointA: { ...head.position }, bodyB: head, length: 0, stiffness: .03, damping: .25 });
+    api.home = { ...head.position };
     Composite.add(world, [...parts, support]);
     api.parts = parts;
   }
 
   function setKO(value) {
     ko = value;
-    support.stiffness = value ? 0 : .035;
-    if (value) release(false);
+    support.stiffness = value ? 0 : .03;
+    if (value) {
+      release(false);
+      // Подкашиваем колени и роняем корпус, иначе идеально ровная стойка так и стоит столбом.
+      const dir = Math.random() < .5 ? -1 : 1;
+      for (const b of api.parts) {
+        const part = b.plugin.part;
+        if (part === 'thigh') Body.setAngularVelocity(b, dir * .16);
+        else if (part === 'shin') Body.setAngularVelocity(b, -dir * .2);
+        else if (part === 'torso' || part === 'head') Body.setVelocity(b, { x: b.velocity.x + dir * 2.5, y: b.velocity.y });
+      }
+    }
   }
 
   function nearest(point, maxDistance = 60) {
@@ -86,6 +101,7 @@ export function createPhysics(initialBounds, onHit) {
     held = Constraint.create({ pointA: { ...point }, bodyB: body,
       pointB: Vector.sub(point, body.position), length: 0, stiffness: .2, damping: .15 });
     Composite.add(world, held);
+    support.stiffness = .0015; // в руке висит свободно, а не тянется резинкой к стойке
     return body;
   }
 
@@ -105,22 +121,31 @@ export function createPhysics(initialBounds, onHit) {
       Body.setVelocity(body, { x: vx * factor, y: vy * factor });
     }
     Composite.remove(world, held); held = null; pointer = null;
+    if (!ko && support) support.stiffness = .03;
   }
 
+  // Фиксированный шаг: переменный dt раскачивает интегратор Matter (тело начинает дёргаться само).
+  const STEP = 1000 / 60;
   function update(dt) {
-    let remaining = Math.min(Math.max(dt, 0), 100);
-    while (remaining > .001) {
-      const step = Math.min(remaining, 1000 / 60);
-      if (!ko) {
-        const torso = api.parts[1];
-        Body.setAngularVelocity(torso, torso.angularVelocity * .83 - Math.sin(torso.angle) * .025 * step / (1000 / 60));
-      }
-      for (const body of api.parts) {
-        if (body.speed > 42) Body.setVelocity(body, Vector.mult(body.velocity, 42 / body.speed));
-      }
-      Engine.update(engine, step); remaining -= step;
-    }
+    acc += Math.min(Math.max(dt, 0), 100);
+    while (acc >= STEP) { acc -= STEP; step(); }
+    for (const [id, v] of squash) { const n = v * .82; if (n < .01) squash.delete(id); else squash.set(id, n); }
   }
+  function step() {
+    const torso = api.parts[1];
+    if (!ko && !held) Body.setAngularVelocity(torso, torso.angularVelocity * .86 - Math.sin(torso.angle) * .03);
+    // Поза: каждая часть мягко возвращается к углу родителя. Живой — упруго, в нокауте — тряпка.
+    const k = ko ? 0 : .022, damp = ko ? .99 : .9;
+    for (const [child, parent] of poses) {
+      const w = child.angularVelocity * damp - Math.sin(child.angle - parent.angle) * k;
+      Body.setAngularVelocity(child, Math.max(-.55, Math.min(.55, w)));
+    }
+    for (const body of api.parts) {
+      if (body.speed > 42) Body.setVelocity(body, Vector.mult(body.velocity, 42 / body.speed));
+    }
+    Engine.update(engine, STEP);
+  }
+  function punch(body, amount = .35) { squash.set(body.id, Math.min(.6, Math.max(squash.get(body.id) ?? 0, amount))); }
 
   function impacts({ pairs }) {
     if (ko) return;

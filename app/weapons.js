@@ -48,8 +48,9 @@ export function createWeapons(physics, onDamage, fx, sfx) {
       }
     }
     const end = hit ? { x: from.x + dx * best, y: from.y + dy * best } : point;
+    if (!hit) fx.hole?.(point.x, point.y);
     const laser = weapon.icon === '⚡';
-    fx.line(from.x, from.y, end.x, end.y, laser ? '#91f6ff' : '#ffe293', laser ? 120 : 80);
+    fx.line(from.x, from.y, end.x, end.y, laser ? '#7df9ff' : '#fff6e0', laser ? 120 : 80);
     fx.burst(from.x, from.y, 2); fx.casing?.(from.x, from.y);
     sfx.play(laser ? 'laser' : 'shot');
     if (hit) {

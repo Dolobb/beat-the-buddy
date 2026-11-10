@@ -9,8 +9,9 @@ import type { IncomingMessage, ServerResponse } from 'node:http';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 const appDir = resolve(root, 'app');
-const dbPath = resolve(root, 'appdata.json');
-const oldPath = resolve(root, 'data.json');
+const dataDir = process.env.DATA_DIR ? resolve(process.env.DATA_DIR) : root; // DATA_DIR — для e2e-тестов
+const dbPath = resolve(dataDir, 'appdata.json');
+const oldPath = resolve(dataDir, 'data.json');
 const dev = process.env.DEV === '1';
 const token = process.env.BOT_TOKEN ?? '';
 if (!dev && !token) throw new Error('BOT_TOKEN is required (or use DEV=1 locally)');
@@ -74,7 +75,7 @@ function body(req: IncomingMessage): Promise<unknown> {
   });
 }
 const mime: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml' };
+  '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const config = {
   friends: friends.map(({ id, name, color, outfit }) => ({ id, name, color, ...(outfit ? { outfit } : {}) })),
   weapons: appWeapons, hp: APP_HP, ko: APP_KO_BONUS,
@@ -120,7 +121,7 @@ const server = createServer(async (req, res) => {
       throw failure(404, 'File not found');
     }
     res.writeHead(200, { 'Content-Type': mime[extname(file)] ?? 'application/octet-stream',
-      'Cache-Control': extname(file) === '.png' ? 'max-age=86400' : 'no-cache',
+      'Cache-Control': extname(file) === '.woff2' ? 'max-age=31536000, immutable' : extname(file) === '.png' ? 'max-age=86400' : 'no-cache',
       'X-Content-Type-Options': 'nosniff', 'Content-Length': contents.length });
     res.end(req.method === 'HEAD' ? undefined : contents);
   } catch (error) {

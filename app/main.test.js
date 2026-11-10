@@ -7,7 +7,10 @@ import { createAppDB, applySync } from '../appstate.ts';
 
 class Node {
   constructor() { this.children=[];this.style={};this.attrs={};this.events={};this.hidden=false;this.open=false;this.textContent='';
-    const classes=new Set();this.classList={toggle:(s,on)=>on?classes.add(s):classes.delete(s),contains:s=>classes.has(s)}; }
+    const classes=new Set();this.classList={toggle:(s,on)=>on?classes.add(s):classes.delete(s),contains:s=>classes.has(s),add:s=>classes.add(s),remove:s=>classes.delete(s)};
+    this.style.setProperty=()=>{};this.offsetWidth=0; }
+  get firstElementChild() { return this.children[0] ??= new Node(); }
+  get lastElementChild() { return this.children.at(-1) ?? (this.children[0]=new Node()); }
   append(...nodes) { this.children.push(...nodes); }
   replaceChildren(...nodes) { this.children=nodes; }
   setAttribute(key,value) { this.attrs[key]=value; }
@@ -24,13 +27,13 @@ async function game(savedWeapon=0) {
   const drawing=new Proxy({measureText:s=>({width:s.length*8})},{get:(o,k)=>o[k]??(()=>{})});
   get('scene').getContext=()=>drawing;
   let db=createAppDB(), raf;
-  const document={getElementById:get,createElement:()=>new Node(),hidden:false,addEventListener:(name,fn)=>{events[name]=fn;}};
+  const document={getElementById:get,createElement:()=>Object.assign(new Node(),{getContext:()=>drawing}),documentElement:new Node(),hidden:false,addEventListener:(name,fn)=>{events[name]=fn;}};
   const telegram={initData:'',ready(){},expand(){},disableVerticalSwipes(){},themeParams:{},setHeaderColor(){},setBackgroundColor(){},onEvent(){},
     isVersionAtLeast:()=>false,requestFullscreen(){throw new Error('WebAppMethodUnsupported');}};
   const vendor={exports:{}};runInNewContext(readFileSync(new URL('./vendor/matter.min.js',import.meta.url),'utf8'),{module:vendor,exports:vendor.exports});
   const context=createContext({console,Matter:vendor.exports,URLSearchParams,AbortSignal,Map,Image:class{async decode(){}},
     document,Telegram:{WebApp:telegram},innerWidth:390,innerHeight:844,devicePixelRatio:2,matchMedia:()=>({matches:false}),
-    performance:{now:()=>100},requestAnimationFrame:fn=>{raf=fn;return 1;},cancelAnimationFrame(){},setInterval(){},
+    performance:{now:()=>100},setTimeout(){},clearTimeout(){},requestAnimationFrame:fn=>{raf=fn;return 1;},cancelAnimationFrame(){},setInterval(){},
     addEventListener:(name,fn)=>{events[name]=fn;},location:{reload(){}},
     localStorage:{getItem:key=>store.get(key)??null,setItem:(key,value)=>store.set(key,value)},
     fetch:async(path,options)=>{
@@ -77,7 +80,7 @@ test('KO awards damage plus bonus once, ragdoll respawns and friend/outfit contr
   assert.equal(g.read('net.view().c'),250);
   g.read('damage(300,{...physics.parts[0].position},1)');
   assert.equal(g.read('net.view().c'),250);
-  g.read('clock+=2501');g.frame();
+  g.read('clock+=2701');g.frame();
   assert.equal(g.read('hp'),200);
   g.get('outfit-button').onclick();
   assert.equal(g.read('sheet()'),'f1');
