@@ -209,7 +209,7 @@ async function showFriends() {
     const button=el('button','friend');button.setAttribute('aria-pressed',String(i===friend));button.style.setProperty('--c',mix(f.color,'#ffffff',.14));
     const count=el('small','','огрёб …');counters.push(count);
     button.append(headImg(f.id),el('strong','',f.name),count);
-    button.onclick=()=>{resetFriend(i);$('panel').close();sfx.play('ui-click');weaponHint();};grid.append(button);
+    button.onclick=async()=>{$('panel').close();sfx.play('ui-click');try{await loadImages(needs(i));}catch{return hint('Нет связи: друг не загрузился');}resetFriend(i);weaponHint();};grid.append(button);
   });
   try {
     const top=await net.top();
@@ -358,8 +358,22 @@ function bind() {
   });
   setInterval(()=>net.flush(),5000);addEventListener('online',()=>net.flush());
 }
+function needs(index) {
+  const f=config.friends[index];
+  return [f.id,`${f.id}-hurt`,`${f.id}-ko`].filter(id=>manifest.heads[id]).map(id=>`head-${id}`)
+    .concat(['naked',f.outfit].filter(Boolean).flatMap(sheet=>Object.keys(manifest.bodies[sheet]).map(part=>`body-${sheet}-${part}`)));
+}
+async function loadImages(names,progress=false) {
+  let loaded=0;
+  await Promise.all(names.filter(name=>!images.has(name)).map(async(name,_,all)=>{
+    const img=new Image();img.src=`./assets/${name}.png`;
+    for(let attempt=0;;attempt++) { try { await img.decode();break; } catch(e) { if(attempt>=2) throw new Error('Картинки не загрузились');img.src=`./assets/${name}.png?r=${attempt+1}`; } }
+    images.set(name,img);
+    if(progress) $('load-progress').value=++loaded/all.length*100;
+  }));
+}
 async function loadJSON(path) {
-  const response=await fetch(path,{signal:AbortSignal.timeout(10000)});
+  const response=await fetch(path,{signal:AbortSignal.timeout(25000)});
   if(!response.ok) throw new Error(`Не удалось загрузить ${path}`);
   return response.json();
 }
@@ -368,20 +382,17 @@ async function boot() {
   [config,manifest]=await Promise.all([loadJSON('./api/config'),loadJSON('./assets/manifest.json')]);
   if(!Number.isInteger(friend)||!config.friends[friend]) friend=0;
   if(!Number.isInteger(selected)||!config.weapons[selected]) selected=0;
-  const names=[...Object.keys(manifest.heads).map(id=>`head-${id}`),...Object.entries(manifest.bodies).flatMap(([sheet,parts])=>Object.keys(parts).map(part=>`body-${sheet}-${part}`))];
-  let loaded=0;
+  // Грузим только текущего друга: остальные подтянутся в фоне, иначе на слабой связи старт не дожидаются.
   await Promise.all([
-    Promise.race([Promise.all([document.fonts?.load(`20px ${DISPLAY}`,'БЕЙ'),document.fonts?.load("700 15px 'Golos Text'",'Ай')]),new Promise(r=>setTimeout(r,2500))]).catch(()=>{}),
-    ...names.map(async name=>{
-      const img=new Image();img.src=`./assets/${name}.png`;await img.decode();images.set(name,img);
-      $('load-progress').value=++loaded/names.length*100;
-    })]);
+    Promise.race([Promise.all([document.fonts?.load(`20px ${DISPLAY}`,'БЕЙ'),document.fonts?.load("700 15px 'Golos Text'",'Ай')]),new Promise(r=>setTimeout(r,1500))]).catch(()=>{}),
+    loadImages(needs(friend),true)]);
   net=createNet(tg?.initData??'',updateAccount);account=net.view();shownCoins=account.c;
   if(!(account.w&1<<selected)) selected=0;
   resize();physics=createPhysics(bounds(),wallHit);weapons=createWeapons(physics,damage,fx,sfx);
   buildShop();resetFriend();bind();$('loading').hidden=true;weaponHint();
   lastFrame=performance.now();frame=requestAnimationFrame(tick);net.start();
   demo();
+  (async()=>{for(let i=0;i<config.friends.length;i++) await loadImages(needs(i)).catch(()=>{});})(); // остальные друзья в фоне
 }
 // Для скриншотов при разработке: #hit, #ko, #friends, #top, #gun в адресе.
 function demo() {
