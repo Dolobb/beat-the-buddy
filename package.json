@@ -6,7 +6,8 @@
     "build": "node scripts/build.ts",
     "size": "node scripts/size.ts",
     "test": "node --test",
-    "start": "npm run build && npm run size && node --env-file=.env bot.ts"
+    "start": "npm run build && npm run size && node --env-file=.env bot.ts",
+    "app": "node --env-file-if-exists=.env server.ts"
   },
   "devDependencies": {
     "terser": "^5.51.2"

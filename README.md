@@ -1,5 +1,25 @@
 # Beat the Buddy
 
+## Telegram Mini App
+
+Полная игра по [SPEC-APP.md](SPEC-APP.md): Matter-рэгдолл, 6 друзей, костюмы, 12 видов оружия,
+комбо, монеты, магазин, общий рейтинг, синтезированный звук. Клиент — ES-модули без сборки;
+Matter и Telegram SDK лежат локально, ассеты берутся из `app/assets/manifest.json`.
+
+Локальный запуск на Node 24/25: `DEV=1 npm run app`, затем `http://127.0.0.1:8787/buddy/`.
+Для production укажи `BOT_TOKEN` в `.env`, убери `DEV=1`. Каждый POST проверяется по Telegram initData (срок 24 часа).
+Сервер слушает loopback, работает и в корне, и под `/buddy/`.
+
+`appdata.json` хранит прогресс мини-аппа отдельно от виджета. Если его нет, первый запуск копирует
+`data.json`, сохраняя монеты и рейтинг, сбрасывая оружие в Руку/Кулак. Файл виджета не меняется.
+Неподтверждённые пакеты и накопленные удары хранятся в localStorage; игра продолжается при потере связи.
+Прогресс отправляется каждые 5 секунд, при покупке и скрытии вкладки. Игра рассчитана на одну активную вкладку на пользователя.
+
+Проверки: `npm test`, `npm run build && npm run size`, `for file in app/*.js; do node --check "$file" || exit; done`.
+Выкладка на HTTPS и настройка BotFather: [deploy/README-deploy.md](deploy/README-deploy.md).
+
+## HTML-виджет
+
 Telegram HTML-виджет по локальной документации Bot API 10.4. Нужны Node 25 и Python 3.
 
 1. Создайте бота у [@BotFather](https://t.me/BotFather), получите токен.

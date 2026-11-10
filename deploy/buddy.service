@@ -1,0 +1,16 @@
+[Unit]
+Description=Beat the Buddy Telegram Mini App
+After=network.target
+
+[Service]
+Type=simple
+User=www-data
+WorkingDirectory=/opt/buddy
+ExecStart=/usr/bin/node --env-file=.env server.ts
+Restart=always
+RestartSec=3
+TimeoutStopSec=10
+UMask=0077
+
+[Install]
+WantedBy=multi-user.target
