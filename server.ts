@@ -3,7 +3,7 @@ import { existsSync, readFileSync, writeFileSync, renameSync } from 'node:fs';
 import { readFile, realpath } from 'node:fs/promises';
 import { resolve, sep, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { friends, phrases, appWeapons, APP_HP, APP_KO_BONUS } from './config.ts';
+import { friends, phrases, appWeapons, APP_HP, APP_KO_BONUS, APP_COIN_MULT } from './config.ts';
 import { createAppDB, parseAppDB, migrateDB, verifyInitData, applySync, topData } from './appstate.ts';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 
@@ -78,7 +78,7 @@ const mime: Record<string, string> = { '.html': 'text/html; charset=utf-8', '.js
   '.json': 'application/json; charset=utf-8', '.png': 'image/png', '.css': 'text/css; charset=utf-8', '.svg': 'image/svg+xml', '.woff2': 'font/woff2' };
 const config = {
   friends: friends.map(({ id, name, color, outfit }) => ({ id, name, color, ...(outfit ? { outfit } : {}) })),
-  weapons: appWeapons, hp: APP_HP, ko: APP_KO_BONUS,
+  weapons: appWeapons, hp: APP_HP, ko: APP_KO_BONUS, mult: APP_COIN_MULT,
   phrases: { common: phrases, ...Object.fromEntries(friends.filter(f => f.phrases).map(f => [f.id, f.phrases])) },
 };
 

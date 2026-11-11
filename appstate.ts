@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { friends, appWeapons, APP_HP, APP_KO_BONUS } from './config.ts';
+import { friends, appWeapons, APP_HP, APP_KO_BONUS, APP_COIN_MULT } from './config.ts';
 
 export type AppUser = { name: string; c: number; w: number; hits: number; seq: number };
 export type AppDB = { rev: number; victims: number[]; users: Record<string, AppUser> };
@@ -61,7 +61,7 @@ export function applySync(db: AppDB, user: TelegramUser, data: unknown) {
       ('buy' in data && (!integer(data.buy) || data.buy >= appWeapons.length))) throw new Error('Invalid sync packet');
   const damage = data.hits * (maxDmg + 15);
   // Covers x3 combo, up to 15 collision damage per hit, KO rewards, and 5% rounding headroom; zero hits earn zero coins.
-  const ceiling = Math.ceil((damage * 3 + APP_KO_BONUS * Math.ceil(damage / APP_HP)) * 1.05);
+  const ceiling = Math.ceil((damage * 3 + APP_KO_BONUS * Math.ceil(damage / APP_HP)) * APP_COIN_MULT * 1.05);
   if (data.coins > ceiling) throw new Error('Coin limit exceeded');
   const previous = db.users[user.id] ?? { name: '', c: 0, w: 3, hits: 0, seq: 0 };
   const player = (u: AppUser) => ({ c: u.c, w: u.w, seq: u.seq });

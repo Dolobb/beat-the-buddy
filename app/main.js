@@ -114,7 +114,7 @@ function damage(amount,point,strength=.3) {
   combo=clock-lastHit<1500?combo+1:1;lastHit=clock;
   const multiplier=Math.min(3,1+Math.floor((combo-1)/5));
   hp-=dealt;
-  const knockedOut=hp<=0, coins=dealt*multiplier+(knockedOut?config.ko:0);
+  const knockedOut=hp<=0, coins=(dealt*multiplier+(knockedOut?config.ko:0))*(config.mult||1);
   net.earn(friend,coins);
   // Отдача: вспышка и «пружинка» на задетой части, кольцо, искры, цифра, слово, монеты в счётчик.
   const body=physics.nearest(point,120);
@@ -132,8 +132,8 @@ function damage(amount,point,strength=.3) {
     physics.setKO(true);koAt=clock;slowUntil=performance.now()+750;sfx.play('ko');phrase(point,true);
     fx.flash(.55);fx.shake(20);haptic('notificationOccurred','success');
     for (let i=0;i<16;i++) fx.coin(point.x,point.y,coinTarget.x,coinTarget.y,120+i*38);
-    $('ko').querySelector('small').textContent=`+${config.ko}`;$('ko').hidden=false;retrigger($('ko').firstElementChild,'x');
-    $('announcement').textContent=`Нокаут. Бонус ${config.ko} монет.`;
+    $('ko').querySelector('small').textContent=`+${config.ko*(config.mult||1)}`;$('ko').hidden=false;retrigger($('ko').firstElementChild,'x');
+    $('announcement').textContent=`Нокаут. Бонус ${config.ko*(config.mult||1)} монет.`;
   } else if (dealt>=10 || Math.random()<.16) phrase(point);
   health();
 }

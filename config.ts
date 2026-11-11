@@ -33,11 +33,11 @@ export const appWeapons = [
   { name: 'Бита', icon: '🏏', price: 500, kind: 'melee', dmg: 8, force: 0.16, radius: 110 },
   { name: 'Кирпич', icon: '🧱', price: 1200, kind: 'throw', dmg: 10, force: 0.65 },
   { name: 'Пистолет', icon: '🔫', price: 2500, kind: 'gun', dmg: 5, force: 0.16, rate: 280 },
-  { name: 'Граната', icon: '💣', price: 6000, kind: 'bomb', dmg: 25, force: 0.5, radius: 180, fuse: 1200 },
-  { name: 'Пулемёт', icon: '💥', price: 12000, kind: 'gun', dmg: 4, force: 0.14, rate: 90 },
-  { name: 'Наковальня', icon: '⚓', price: 20000, kind: 'drop', dmg: 40, force: 0.7 },
-  { name: 'Базука', icon: '🚀', price: 35000, kind: 'bomb', dmg: 60, force: 0.5, radius: 240, fuse: 0 },
-  { name: 'Лазер', icon: '⚡', price: 70000, kind: 'gun', dmg: 6, force: 0.1, rate: 50 },
-  { name: 'Ядерка', icon: '☢️', price: 200000, kind: 'bomb', dmg: 300, force: 1.2, radius: 2000, fuse: 2500 },
+  { name: 'Граната', icon: '💣', price: 3000, kind: 'bomb', dmg: 25, force: 0.5, radius: 180, fuse: 1200 },
+  { name: 'Пулемёт', icon: '💥', price: 6000, kind: 'gun', dmg: 4, force: 0.14, rate: 90 },
+  { name: 'Наковальня', icon: '⚓', price: 10000, kind: 'drop', dmg: 40, force: 0.7 },
+  { name: 'Базука', icon: '🚀', price: 17500, kind: 'bomb', dmg: 60, force: 0.5, radius: 240, fuse: 0 },
+  { name: 'Лазер', icon: '⚡', price: 35000, kind: 'gun', dmg: 6, force: 0.1, rate: 50 },
+  { name: 'Ядерка', icon: '☢️', price: 100000, kind: 'bomb', dmg: 300, force: 1.2, radius: 2000, fuse: 2500 },
 ];
-export const APP_HP = 200, APP_KO_BONUS = 50;
+export const APP_HP = 200, APP_KO_BONUS = 50, APP_COIN_MULT = 2;
